@@ -1,18 +1,49 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
-
-# Run and deploy your AI Studio app
-
 This contains everything you need to run your app locally.
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
+. Pré-requisitos
+Certifique-se de ter o Node.js instalado. Você pode baixar em nodejs.org. Recomendo a versão LTS (mais estável).
+2. Prepare a Pasta do Projeto
+Se você baixou o arquivo .zip...
+Extraia o conteúdo do arquivo em uma pasta de sua preferência.
+Abra o terminal (ou Prompt de Comando/PowerShell) nessa pasta.
+3. Instalação das Dependências
+No terminal, dentro da pasta do projeto, execute o seguinte comando para baixar todas as bibliotecas necessárias (como React, Lucide e Papaparse):
+code
+Bash
+npm install
+4. Configuração das Variáveis de Ambiente
+O projeto possui um arquivo chamado .env.example. Você precisa criar uma cópia dele chamada apenas .env:
+No Windows (PowerShell): cp .env.example .env
+No Mac/Linux: cp .env.example .env
+(Nota: Como este app usa o localStorage para o "Banco de Dados" local, você não precisa de chaves de API externas para as funções básicas de cadastro e consulta).
+5. Iniciar o Servidor de Desenvolvimento
+Agora, inicie o aplicativo com:
+code
+Bash
+npm run dev
+6. Acessar o Aplicativo
+Após o comando acima, o terminal mostrará um link (geralmente http://localhost:3000 ou http://localhost:5173).
+Segure Ctrl e clique no link ou copie e cole no seu navegador.
+O sistema de Gestão Escolar estará funcionando!
 
+Para criar um executável:
+Coloque o aquivo de lote no diretório raiz.
+@echo off
+title Iniciando Sistema de Gestao Escolar
+echo ==========================================
+echo    SISTEMA DE GESTAO ALUNOS DA PEDRO -
+echo ==========================================
+echo.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+echo Iniciando servidor local...
+echo O programa abrira automaticamente no seu navegador.
+echo NAO FECHE ESTA JANELA ENQUANTO ESTIVER USANDO O SISTEMA.
+echo.
+
+:: Abre o navegador e inicia o servidor
+start http://localhost:3000
+call npm run dev
+pause
+
