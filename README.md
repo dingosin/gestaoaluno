@@ -2,7 +2,8 @@ This contains everything you need to run your app locally.
 
 ## Run Locally
 
-. Pré-requisitos
+#Pré-requisitos
+
 Certifique-se de ter o Node.js instalado. Você pode baixar em nodejs.org. Recomendo a versão LTS (mais estável).
 
 1. Prepare a Pasta do Projeto
