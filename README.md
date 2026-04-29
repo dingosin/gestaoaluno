@@ -1,57 +1,20 @@
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
+
+# Run and deploy your AI Studio app
+
 This contains everything you need to run your app locally.
+
+View your app in AI Studio: https://ai.studio/apps/61d7e22c-4a08-4adc-bd01-797b67692411
 
 ## Run Locally
 
-#Pré-requisitos
-
-Certifique-se de ter o Node.js instalado. Você pode baixar em nodejs.org. Recomendo a versão LTS (mais estável).
-
-1. Prepare a Pasta do Projeto
-
-Se você baixou o arquivo .zip...
-
-Extraia o conteúdo do arquivo em uma pasta de sua preferência.
-
-Abra o terminal (ou Prompt de Comando/PowerShell) nessa pasta.
-
-2. Instalação das Dependências
-
-No terminal, dentro da pasta do projeto, execute o seguinte comando para baixar todas as bibliotecas necessárias (como React, Lucide e Papaparse):
-
-code
-
-Bash
-
-npm install
-
-3. Configuração das Variáveis de Ambiente
-
-O projeto possui um arquivo chamado .env.example. Você precisa criar uma cópia dele chamada apenas .env:
-
-No Windows (PowerShell): cp .env.example .env
-
-No Mac/Linux: cp .env.example .env
-
-(Nota: Como este app usa o localStorage para o "Banco de Dados" local, você não precisa de chaves de API externas para as funções básicas de cadastro e consulta).
-
-4. Iniciar o Servidor de Desenvolvimento
-
-Agora, inicie o aplicativo com:
-
-code
-
-Bash
-
-npm run dev
-
-5. Acessar o Aplicativo
-
-Após o comando acima, o terminal mostrará um link (geralmente http://localhost:3000 ou http://localhost:5173).
-
-Segure Ctrl e clique no link ou copie e cole no seu navegador.
-
-O sistema de Gestão Escolar estará funcionando!
-
-Executável na pasta raiz.
+**Prerequisites:**  Node.js
 
 
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`

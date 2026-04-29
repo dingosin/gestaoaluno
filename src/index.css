@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  @media print {
+    .no-print {
+      display: none !important;
+    }
+    
+    body {
+      background: white !important;
+      padding: 0 !important;
+      margin: 0 !important;
+    }
+
+    main {
+       overflow: visible !important;
+       height: auto !important;
+       padding: 0 !important;
+       margin: 0 !important;
+    }
+
+    .attendance-page {
+      page-break-after: always;
+      break-after: page;
+      margin: 0 !important;
+      padding: 0.5cm !important;
+      width: 100% !important;
+      box-shadow: none !important;
+      border: none !important;
+    }
+
+    .attendance-page:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    table {
+      border-collapse: collapse !important;
+    }
+  }
+}
+
+.vibrancy-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+}
