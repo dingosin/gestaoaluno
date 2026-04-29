@@ -6,6 +6,8 @@ const INITIAL_DATA: AppData = {
   classes: [],
   students: [],
   rmRegistry: [],
+  transferWaitlist: [],
+  adminPassword: 'rhidi2xd',
 };
 
 export const getDb = (): AppData => {
@@ -16,7 +18,9 @@ export const getDb = (): AppData => {
     return {
       ...INITIAL_DATA,
       ...parsed,
-      rmRegistry: parsed.rmRegistry || []
+      rmRegistry: parsed.rmRegistry || [],
+      transferWaitlist: parsed.transferWaitlist || [],
+      adminPassword: parsed.adminPassword || INITIAL_DATA.adminPassword
     };
   } catch (e) {
     return INITIAL_DATA;

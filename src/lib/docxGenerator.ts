@@ -41,8 +41,8 @@ export const generateAttendanceDocx = async (
   });
 
   const studentRows = students.map(s => {
-    const isTransferred = s.status === 'Transferido';
-    const textColor = isTransferred ? "e11d48" : "000000"; // rose-600
+    const isSpecial = s.status !== 'Ativo';
+    const textColor = isSpecial ? "e11d48" : "000000"; // rose-600
 
     return new TableRow({
       children: [
