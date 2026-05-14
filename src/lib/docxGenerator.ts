@@ -11,7 +11,8 @@ import {
   BorderStyle,
   VerticalAlign,
   Header,
-  SectionType
+  SectionType,
+  PageOrientation
 } from 'docx';
 import { saveAs } from 'file-saver';
 import { SchoolClass, Student } from '../types';
@@ -27,15 +28,15 @@ export const generateAttendanceDocx = async (
     children: [
       new TableCell({
         children: [new Paragraph({ text: "Nº", alignment: AlignmentType.CENTER, style: "HeaderStyle" })],
-        width: { size: 5, type: WidthType.PERCENTAGE },
+        width: { size: 567, type: WidthType.DXA }, // 1cm
       }),
       new TableCell({
         children: [new Paragraph({ text: "Nome do Aluno", alignment: AlignmentType.CENTER, style: "HeaderStyle" })],
-        width: { size: 45, type: WidthType.PERCENTAGE },
+        width: { size: 6354, type: WidthType.DXA }, // remaining
       }),
       ...days.map(d => new TableCell({
         children: [new Paragraph({ text: d.toString(), alignment: AlignmentType.CENTER, style: "HeaderStyle" })],
-        width: { size: 1.6, type: WidthType.PERCENTAGE },
+        width: { size: 227, type: WidthType.DXA }, // 0.4cm
       }))
     ],
   });
@@ -51,13 +52,18 @@ export const generateAttendanceDocx = async (
             alignment: AlignmentType.CENTER,
             children: [new TextRun({ text: s.number.toString(), color: textColor, italics: true })]
           })],
+          width: { size: 567, type: WidthType.DXA },
         }),
         new TableCell({
           children: [new Paragraph({ 
             children: [new TextRun({ text: s.name.toUpperCase(), color: textColor, bold: true })]
           })],
+          width: { size: 6354, type: WidthType.DXA },
         }),
-        ...days.map(() => new TableCell({ children: [] }))
+        ...days.map(() => new TableCell({ 
+          children: [],
+          width: { size: 227, type: WidthType.DXA },
+        }))
       ],
     });
   });
@@ -67,9 +73,18 @@ export const generateAttendanceDocx = async (
   const emptyRows = Array.from({ length: emptyRowsCount }).map(() => {
     return new TableRow({
       children: [
-        new TableCell({ children: [] }),
-        new TableCell({ children: [] }),
-        ...days.map(() => new TableCell({ children: [] }))
+        new TableCell({ 
+          children: [],
+          width: { size: 567, type: WidthType.DXA },
+        }),
+        new TableCell({ 
+          children: [],
+          width: { size: 6354, type: WidthType.DXA },
+        }),
+        ...days.map(() => new TableCell({ 
+          children: [],
+          width: { size: 227, type: WidthType.DXA },
+        }))
       ],
     });
   });
@@ -82,7 +97,11 @@ export const generateAttendanceDocx = async (
   const doc = new Document({
     sections: [{
       properties: {
-        type: SectionType.CONTINUOUS,
+        page: {
+          size: {
+            orientation: PageOrientation.LANDSCAPE,
+          },
+        },
       },
       headers: {
         default: new Header({

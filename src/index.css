@@ -7,6 +7,11 @@
 
 @layer base {
   @media print {
+    @page {
+      size: landscape;
+      margin: 0;
+    }
+
     .no-print {
       display: none !important;
     }
@@ -15,6 +20,7 @@
       background: white !important;
       padding: 0 !important;
       margin: 0 !important;
+      width: 100vw !important;
     }
 
     main {
@@ -22,16 +28,20 @@
        height: auto !important;
        padding: 0 !important;
        margin: 0 !important;
+       display: block !important;
     }
 
     .attendance-page {
       page-break-after: always;
       break-after: page;
       margin: 0 !important;
-      padding: 0.5cm !important;
+      padding: 5mm !important;
       width: 100% !important;
+      height: 100vh !important;
       box-shadow: none !important;
       border: none !important;
+      background: white !important;
+      box-sizing: border-box !important;
     }
 
     .attendance-page:last-child {
@@ -46,6 +56,14 @@
 
     table {
       border-collapse: collapse !important;
+      width: 100% !important;
+      table-layout: fixed !important;
+      border: 1px solid black !important;
+    }
+
+    th, td {
+      border: 1px solid black !important;
+      box-sizing: border-box !important;
     }
   }
 }

@@ -29,9 +29,9 @@ export const DataImporter: React.FC<ImportProps> = ({ onComplete }) => {
     const worksheet = workbook.Sheets[firstSheetName];
     
     if (header) {
-      return XLSX.utils.sheet_to_json(worksheet);
+      return XLSX.utils.sheet_to_json(worksheet, { raw: false });
     } else {
-      return XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      return XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
     }
   };
 
@@ -116,7 +116,7 @@ export const DataImporter: React.FC<ImportProps> = ({ onComplete }) => {
           rmNumber: parseInt(String(row['RM'] || row['Rm'])),
           type: type,
           studentName: String(row['NOME'] || row['Nome']).toUpperCase(),
-          birthDate: String(row['DATA NASC'] || row['Data Nascimento'] || row['Nascimento'] || new Date().toLocaleDateString('pt-BR'))
+          birthDate: String(row['DATA NASC'] || row['Data Nascimento'] || row['Nascimento'] || new Date().toLocaleDateString('pt-BR')) // Local date as fallback is already formatted correctly for simple strings
         }));
 
       const db = getDb();
@@ -137,6 +137,67 @@ export const DataImporter: React.FC<ImportProps> = ({ onComplete }) => {
     }
   };
 
+  const handleSupplementStudents = async (file: File) => {
+    setLoading(true);
+    try {
+      let rows: any[];
+      if (file.name.endsWith('.csv')) {
+        const results = await new Promise<Papa.ParseResult<any>>((resolve) => {
+          Papa.parse(file, {
+            delimiter: ";",
+            encoding: "UTF-8",
+            header: true,
+            skipEmptyLines: true,
+            complete: (res) => resolve(res as Papa.ParseResult<any>),
+          });
+        });
+        rows = results.data;
+      } else {
+        rows = await parseExcelFile(file, true);
+      }
+
+      const db = getDb();
+      let updatedCount = 0;
+      const updatedStudents = db.students.map(student => {
+        // Try to find the student in the imported rows by RA
+        const match = rows.find(row => {
+          const rowRA = String(row['RA'] || row['Ra'] || row['ra'] || '').replace(/\D/g, '');
+          const studentRA = String(student.ra || '').replace(/\D/g, '');
+          return studentRA && rowRA && rowRA === studentRA;
+        });
+
+          const findDate = (m: any) => {
+            return m['Data de Nasc.'] || m['DATA DE NASC.'] || m['DATA NASC.'] || m['Data Nascimento'] || m['DATA DE NASC'] || m['DT_NASC'] || m['NASCIMENTO'];
+          };
+
+          if (match) {
+            updatedCount++;
+            const newBirthDate = findDate(match);
+            return {
+              ...student,
+              motherName: student.motherName || (match['NOME DA MÃE'] || match['Nome da Mãe'] || match['Mae'])?.toString().toUpperCase(),
+              birthDate: (student.birthDate && student.birthDate !== "" && student.birthDate !== "---") ? student.birthDate : newBirthDate,
+              phone: student.phone || match['TELEFONE'] || match['Telefone'] || match['Fone'],
+              address: student.address || (match['ENDEREÇO'] || match['Endereço'] || match['Endereco'])?.toString().toUpperCase(),
+              rg: student.rg || match['RG'] || match['Rg'],
+              cpf: student.cpf || match['CPF'] || match['Cpf'],
+              susCard: student.susCard || match['CARTÃO DO SUS'] || match['Cartão SUS'] || match['SUS'],
+              observations: student.observations || match['OBSERVAÇÕES'] || match['Observações'] || match['Obs']
+            };
+          }
+        return student;
+      });
+
+      saveDb({ ...db, students: updatedStudents });
+      setMessage({ text: `${updatedCount} fichas de alunos foram complementadas com novos dados!`, type: 'success' });
+      onComplete();
+    } catch (err: any) {
+      setMessage({ text: `Erro ao complementar: ${err.message}`, type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-12">
       <div className="bg-indigo-600 p-8 rounded-[2rem] text-white shadow-2xl relative overflow-hidden">
@@ -149,12 +210,12 @@ export const DataImporter: React.FC<ImportProps> = ({ onComplete }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {/* Import Classes */}
-        <div className="p-8 border-2 border-dashed border-slate-200 rounded-3xl hover:border-indigo-400 transition-all bg-slate-50/30 group hover:bg-indigo-50/20">
+        <div className="p-8 border-2 border-dashed border-slate-200 rounded-3xl hover:border-indigo-400 transition-all bg-slate-50/30 group hover:bg-indigo-50/20 flex flex-col">
           <div className="bg-indigo-100 w-10 h-10 rounded-xl flex items-center justify-center mb-4 text-indigo-600 font-black shadow-sm group-hover:scale-110 transition-transform">1</div>
           <h3 className="font-black text-slate-700 mb-2 uppercase tracking-tight text-lg">Importar Turmas</h3>
-          <p className="text-xs text-slate-400 font-bold mb-6 leading-relaxed">Carregue o arquivo "Consulta Matrícula" para configurar a estrutura de classes.</p>
+          <p className="text-xs text-slate-400 font-bold mb-6 leading-relaxed flex-1">Carregue o arquivo "Consulta Matrícula" para configurar a estrutura de classes.</p>
           <input
             type="file"
             accept=".csv, .xlsx, .xls"
@@ -172,12 +233,12 @@ export const DataImporter: React.FC<ImportProps> = ({ onComplete }) => {
         </div>
 
         {/* Import RM */}
-        <div className="p-8 border-2 border-dashed border-slate-200 rounded-3xl hover:border-orange-400 transition-all bg-slate-50/30 group hover:bg-orange-50/20">
+        <div className="p-8 border-2 border-dashed border-slate-200 rounded-3xl hover:border-orange-400 transition-all bg-slate-50/30 group hover:bg-orange-50/20 flex flex-col">
           <div className="bg-orange-100 w-10 h-10 rounded-xl flex items-center justify-center mb-4 text-orange-600 font-black shadow-sm group-hover:scale-110 transition-transform">2</div>
           <h3 className="font-black text-slate-700 mb-2 uppercase tracking-tight text-lg">Histórico de RM</h3>
           <p className="text-xs text-slate-400 font-bold mb-2 leading-relaxed">Importe o livro de registros histórico (NOME, DATA NASC, RM).</p>
           
-          <div className="grid grid-cols-2 gap-3 mt-6">
+          <div className="grid grid-cols-2 gap-3 mt-6 flex-1">
             <label
               htmlFor="rm-upload-pre"
               className="flex flex-col items-center gap-2 p-4 bg-white border border-slate-200 rounded-2xl hover:border-orange-400 cursor-pointer transition-all text-center group"
@@ -209,7 +270,29 @@ export const DataImporter: React.FC<ImportProps> = ({ onComplete }) => {
             onChange={(e) => e.target.files?.[0] && handleImportRM(e.target.files[0], 'Post-2018')}
           />
         </div>
+
+        {/* Supplement Data */}
+        <div className="p-8 border-2 border-dashed border-slate-200 rounded-3xl hover:border-emerald-400 transition-all bg-slate-50/30 group hover:bg-emerald-50/20 flex flex-col">
+          <div className="bg-emerald-100 w-10 h-10 rounded-xl flex items-center justify-center mb-4 text-emerald-600 font-black shadow-sm group-hover:scale-110 transition-transform">3</div>
+          <h3 className="font-black text-slate-700 mb-2 uppercase tracking-tight text-lg">Complementar Dados</h3>
+          <p className="text-xs text-slate-400 font-bold mb-6 leading-relaxed flex-1">Enriqueça fichas existentes com Telefone, Endereço e CPF usando o RA como chave.</p>
+          <input
+            type="file"
+            accept=".csv, .xlsx, .xls"
+            className="hidden"
+            id="supplement-upload"
+            onChange={(e) => e.target.files?.[0] && handleSupplementStudents(e.target.files[0])}
+          />
+          <label
+            htmlFor="supplement-upload"
+            className="inline-flex items-center gap-3 px-6 py-4 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 cursor-pointer transition-all w-full justify-center font-black uppercase tracking-widest text-xs shadow-lg active:scale-95"
+          >
+            <FileType className="w-5 h-5" />
+            Complementar (.xlsx)
+          </label>
+        </div>
       </div>
+
 
       {message && (
         <div className={`p-4 rounded-2xl flex items-start gap-4 animate-in fade-in slide-in-from-top-4 border ${message.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-rose-50 border-rose-100 text-rose-800'}`}>
@@ -241,9 +324,9 @@ export const StudentImporter: React.FC<{ targetClassId: string, onComplete: () =
     const worksheet = workbook.Sheets[firstSheetName];
     
     if (header) {
-      return XLSX.utils.sheet_to_json(worksheet);
+      return XLSX.utils.sheet_to_json(worksheet, { raw: false });
     } else {
-      return XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      return XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
     }
   };
 

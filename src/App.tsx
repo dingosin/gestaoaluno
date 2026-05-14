@@ -26,10 +26,84 @@ import {
   Edit2,
   Lock,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Download,
+  Upload
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
+import { 
+  DndContext, 
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  horizontalListSortingStrategy,
+  useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { 
+  Document, 
+  Packer, 
+  Paragraph, 
+  Table, 
+  TableRow, 
+  TableCell, 
+  WidthType, 
+  AlignmentType, 
+  HeadingLevel, 
+  PageOrientation, 
+  TextRun, 
+  BorderStyle, 
+  VerticalAlign 
+} from 'docx';
+import { saveAs } from 'file-saver';
+import { utils, writeFile } from 'xlsx';
 import { getDb, saveDb } from './lib/db';
+
+// Utility for consistent date formatting (DD/MM/YYYY)
+function formatDisplayDate(dateValue: string | Date | undefined | null): string {
+  if (!dateValue) return '---';
+  
+  try {
+    // If it's already a Date object
+    if (dateValue instanceof Date) {
+      const d = dateValue;
+      return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    }
+
+    // If it's a string, try to parse it
+    const valStr = String(dateValue).trim();
+    
+    // Handle YYYY-MM-DD (ISO) which is common from input[type=date]
+    if (/^\d{4}-\d{2}-\d{2}/.test(valStr)) {
+      const parts = valStr.split('T')[0].split('-');
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+
+    // If it's already in DD/MM/YYYY, just return it
+    if (/^\d{2}\/\d{2}\/\d{4}/.test(valStr)) {
+      return valStr;
+    }
+
+    // Fallback for other string formats
+    const d = new Date(valStr);
+    if (!isNaN(d.getTime())) {
+      return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    }
+  } catch (e) {
+    console.error("Error formatting date:", dateValue, e);
+  }
+
+  return String(dateValue);
+}
+
 import { AppData, Student, SchoolClass, StudentStatus, RMType, RMRecord, WaitlistEntry } from './types';
 import { DataImporter, StudentImporter } from './components/DataImporter';
 import { generateAttendanceDocx, generateVacancyDocx } from './lib/docxGenerator';
@@ -83,7 +157,7 @@ export default function App() {
           ...s,
           status: newStatus,
           number: updatedNumber,
-          statusDate: new Date().toLocaleDateString('pt-BR')
+          statusDate: formatDisplayDate(new Date())
         };
       }
       return s;
@@ -149,8 +223,10 @@ export default function App() {
               <span className="text-[10px] font-bold text-white">{db.classes.length}</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-[10px] text-indigo-200">Alunos</span>
-              <span className="text-[10px] font-bold text-white">{db.students.length}</span>
+              <span className="text-[10px] text-indigo-200">Alunos (Únicos)</span>
+              <span className="text-[10px] font-bold text-white">
+                {new Set(db.students.filter(s => s.status !== 'Inativo').map(s => s.ra)).size}
+              </span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-[10px] text-indigo-200">RM Registrados</span>
@@ -243,7 +319,9 @@ export default function App() {
         {/* Footer Context */}
         <footer className="h-12 px-8 bg-indigo-900 text-indigo-200 text-[10px] flex items-center justify-between border-t border-indigo-800 shrink-0 no-print font-medium">
           <div className="flex gap-4 items-center">
-            <span>Última atualização: <strong>{new Date().toLocaleTimeString()}</strong></span>
+            <span>Última atualização: <strong>{new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</strong></span>
+            <span className="text-indigo-400">|</span>
+            <span> {formatDisplayDate(new Date())} </span>
             <span className="text-indigo-400">|</span>
             <span>Versão 2.4.0</span>
           </div>
@@ -268,8 +346,8 @@ function DashboardView({ db }: { db: AppData }) {
     <div className="space-y-8 pb-10">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <StatCard 
-          label="Total Alunos" 
-          value={db.students.length} 
+          label="Total Alunos (Únicos)" 
+          value={new Set(db.students.filter(s => s.status !== 'Inativo').map(s => s.ra)).size} 
           icon={Users} 
           borderColor="border-indigo-500"
         />
@@ -566,7 +644,7 @@ function StudentsView({
                     <td className="px-6 py-4">
                       <p className="text-sm font-black text-slate-800 uppercase tracking-tight group-hover:text-indigo-900 transition-colors">{s.name}</p>
                       <p className="text-[10px] text-indigo-500 font-black uppercase tracking-tighter mt-0.5">Mãe: {s.motherName || '---'}</p>
-                      <p className="text-[9px] text-slate-400 font-bold italic mt-1">Nasc: {s.birthDate || 'Não informado'}</p>
+                      <p className="text-[9px] text-slate-400 font-bold italic mt-1">Nasc: {formatDisplayDate(s.birthDate) || 'Não informado'}</p>
                     </td>
                     {showAllData && (
                       <>
@@ -653,7 +731,7 @@ function StatusBadge({ status, date }: { status: StudentStatus, date?: string })
       <span className={cn("text-[8px] font-black uppercase px-2 py-0.5 rounded-full border shadow-sm", styles[status])}>
         {status}
       </span>
-      {date && status !== 'Ativo' && <p className="text-[8px] text-slate-400 font-bold italic">Desde: {date}</p>}
+      {date && status !== 'Ativo' && <p className="text-[8px] text-slate-400 font-bold italic">Desde: {formatDisplayDate(date)}</p>}
     </div>
   );
 }
@@ -701,9 +779,9 @@ function AttendanceView({ db }: { db: AppData }) {
           <div>
             <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase italic flex items-center gap-3">
               <ClipboardList className="w-8 h-8 text-indigo-600" />
-              Lista de Chamada Inteligente
+              Lista de Chamada Profissional
             </h2>
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Configuração de relatórios e impressão em massa</p>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Configuração de relatórios e impressão em massa (FORMATO PAISAGEM)</p>
           </div>
           <div className="flex gap-2">
             <select 
@@ -720,6 +798,14 @@ function AttendanceView({ db }: { db: AppData }) {
             >
               {years.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
+            <button 
+              onClick={() => window.print()}
+              disabled={selectedClassIds.length === 0}
+              className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-indigo-700 shadow-xl transition-all flex items-center gap-2 transform active:scale-95 disabled:bg-slate-200 disabled:shadow-none"
+            >
+              <Printer className="w-4 h-4" />
+              Imprimir
+            </button>
           </div>
         </div>
 
@@ -749,7 +835,7 @@ function AttendanceView({ db }: { db: AppData }) {
         </div>
 
         <div className="border-t border-slate-100 pt-6 text-center">
-            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Relatórios ({selectedClassIds.length} turmas selecionadas)</h3>
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Exportar em Massa ({selectedClassIds.length} turmas)</h3>
             <div className="flex flex-wrap gap-4 justify-center">
               {selectedClassIds.length > 0 && (
                 <button 
@@ -762,10 +848,10 @@ function AttendanceView({ db }: { db: AppData }) {
                       await generateAttendanceDocx(cls, students, daysInMonth, months[month], year);
                     }
                   }}
-                  className="px-10 py-4 bg-blue-600 text-white rounded-3xl font-black uppercase tracking-[0.2em] text-xs hover:bg-blue-700 shadow-2xl transition-all active:scale-95 flex items-center gap-3"
+                  className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] hover:bg-blue-700 shadow-lg transition-all active:scale-95 flex items-center gap-3"
                 >
-                  <FileText className="w-5 h-5" />
-                  Exportar Turmas para Word (.docx)
+                  <FileText className="w-4 h-4" />
+                  Gerar Word (.docx)
                 </button>
               )}
             </div>
@@ -776,64 +862,70 @@ function AttendanceView({ db }: { db: AppData }) {
       <div className="attendance-print-container">
         {selectedClassIds.map(id => {
           const cls = db.classes.find(c => c.id === id)!;
-          // Include active and transferred students
           const students = db.students
             .filter(s => s.classId === id && s.status !== 'Inativo')
             .sort((a, b) => a.number - b.number);
 
           return (
-            <div key={id} className="attendance-page bg-white p-6 shadow-xl mb-10 print:m-0 print:shadow-none print:p-4 print:page-break-after-always">
-              {/* Header Layout based on Excel attachment */}
-              <div className="border-[1.5px] border-slate-900 grid grid-cols-[50px_1fr_1fr] mb-[-1.5px]">
-                <div className="p-2 border-r border-slate-900 text-[10px] font-black text-center flex items-center justify-center italic">Nº</div>
-                <div className="p-2 border-r border-slate-900 text-[12px] font-black text-center uppercase tracking-tighter flex items-center justify-center bg-slate-50">
-                   {cls.name}
-                </div>
-                <div className="p-2 text-[12px] font-black text-center flex items-center justify-center lowercase tracking-tighter bg-slate-50">
-                   {months[month].substring(0,3).toLowerCase()}/{year.toString().substring(2)}
-                </div>
-              </div>
+            <div key={id} className="attendance-page bg-white p-4 shadow-xl mb-10 print:m-0 print:shadow-none print:p-0 print:page-break-after-always overflow-hidden">
+               {/* Minimal Header for Print */}
+               <div className="flex justify-between items-center border-[1.5px] border-slate-900 px-3 py-1 mb-0 bg-slate-50">
+                  <h1 className="text-[12px] font-black uppercase leading-tight">EMEF PEDRO CAMINOTO</h1>
+                  <h2 className="text-[14px] font-black uppercase tracking-tighter italic leading-none">{cls.name}</h2>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{months[month].toUpperCase()} / {year}</p>
+               </div>
 
-              {/* Data Grid */}
-              <div className="attendance-grid-container overflow-x-auto print:overflow-visible">
-                <table className="w-full border-collapse border-[1.5px] border-slate-900">
+               {/* Grid with fixed widths for days */}
+               <div className="w-full">
+                <table className="w-full border-collapse border-[1.5px] border-slate-900 table-fixed">
                   <thead>
-                    <tr>
-                      <th className="w-[40px] border border-slate-900 p-1 text-[8px] font-black bg-slate-50 uppercase tracking-tighter"></th>
-                      <th className="w-1/2 border border-slate-900 p-1 text-[8px] font-black bg-slate-50 uppercase tracking-tighter">Nome do Aluno</th>
+                    <tr className="bg-slate-200">
+                      <th className="w-[30px] border border-slate-900 p-0 text-[9px] font-black uppercase tracking-tighter text-center">Nº</th>
+                      <th className="w-[30%] border border-slate-900 p-0 text-[10px] font-black uppercase tracking-tighter text-left pl-2">Aluno</th>
                       {daysInMonth.map(d => (
-                        <th key={d} className="border border-slate-900 p-0 text-[8px] font-black bg-slate-50 w-[20px] text-center">
+                        <th key={d} className="border border-slate-900 p-0 text-[10px] font-black min-w-[28px] text-center">
                           {d}
                         </th>
                       ))}
+                      <th className="w-[50px] border border-slate-900 p-0 text-[9px] font-black uppercase tracking-tighter text-center">Faltas</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {students.map(s => (
-                      <tr key={s.id} className="h-7">
-                        <td className={cn("border border-slate-900 p-0 text-[10px] font-black text-center italic", s.status !== 'Ativo' && "text-rose-600")}>{s.number}</td>
+                    {students.map((s, idx) => (
+                      <tr key={s.id} className={cn("h-[19px]", idx % 2 === 0 ? "bg-white" : "bg-slate-50")}>
                         <td className={cn(
-                          "border border-slate-900 px-2 py-0 text-[9px] font-black uppercase truncate whitespace-nowrap overflow-hidden max-w-[200px]",
-                          s.status !== 'Ativo' && "text-rose-600"
-                        )}>{s.name}</td>
+                          "border border-slate-900 p-0 text-[11px] font-black text-center italic",
+                          s.status !== 'Ativo' && "text-rose-600 bg-rose-50"
+                        )}>
+                          {String(s.number).padStart(2, '0')}
+                        </td>
+                        <td className={cn(
+                          "border border-slate-900 px-2 py-0 text-[9px] font-bold uppercase truncate whitespace-nowrap",
+                          s.status !== 'Ativo' && "text-rose-600 bg-rose-50 italic"
+                        )}>
+                          {s.name}
+                          {s.status === 'Transferido' && <span className="text-[7px] ml-1 opacity-60">(T)</span>}
+                        </td>
                         {daysInMonth.map(d => (
-                          <td key={d} className="border border-slate-900 p-0 w-[20px]"></td>
+                          <td key={d} className={cn("border border-slate-900 p-0", s.status !== 'Ativo' && "bg-rose-100/30")}></td>
                         ))}
+                        <td className="border border-slate-900 p-0"></td>
                       </tr>
                     ))}
-                    {/* Fill empty rows to 25 if needed for layout consistency */}
-                    {Array.from({ length: Math.max(0, 25 - students.length) }).map((_, i) => (
-                      <tr key={`empty-${i}`} className="h-7">
-                        <td className="border border-slate-900"></td>
-                        <td className="border border-slate-900"></td>
+                    {/* Ghost/Empty rows for aesthetics and spacing to reach 40 rows max */}
+                    {Array.from({ length: Math.max(0, 35 - students.length) }).map((_, i) => (
+                      <tr key={`empty-${i}`} className="h-[19px]">
+                        <td className="border border-slate-900 p-0"></td>
+                        <td className="border border-slate-900 p-0"></td>
                         {daysInMonth.map(d => (
-                          <td key={d} className="border border-slate-900 p-0 w-[20px]"></td>
+                          <td key={d} className="border border-slate-900 p-0"></td>
                         ))}
+                        <td className="border border-slate-900 p-0"></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
+               </div>
             </div>
           );
         })}
@@ -883,7 +975,7 @@ function RemanejamentoView({ db, setDb }: { db: AppData, setDb: (d: AppData) => 
       grade: formData.grade,
       currentPeriod: formData.currentPeriod,
       targetPeriod: formData.targetPeriod,
-      requestDate: new Date().toLocaleDateString('pt-BR'),
+      requestDate: formatDisplayDate(new Date()),
       status: 'Pendente',
       observations: formData.observations
     };
@@ -1084,7 +1176,7 @@ function RemanejamentoView({ db, setDb }: { db: AppData, setDb: (d: AppData) => 
                            </div>
                         </td>
                         <td className="px-6 py-4">
-                           <p className="text-[10px] font-bold text-slate-400">{w.requestDate}</p>
+                           <p className="text-[10px] font-bold text-slate-400">{formatDisplayDate(w.requestDate)}</p>
                            <span className={cn(
                              "text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full border",
                              w.status === 'Pendente' ? "bg-amber-50 text-amber-600 border-amber-100" :
@@ -1150,23 +1242,52 @@ const TransfersView = ({ db, setDb }: { db: AppData, setDb: (d: AppData) => void
   const handleTransfer = () => {
     if (!selectedStudentId || !targetClassId) return;
 
+    const studentToMove = db.students.find(s => s.id === selectedStudentId);
+    if (!studentToMove) return;
+
+    const dateStr = formatDisplayDate(new Date());
+    
+    // Find the next roll number in target class
+    const targetClassStudents = db.students.filter(s => s.classId === targetClassId);
+    const nextNumber = targetClassStudents.length > 0 
+      ? Math.max(...targetClassStudents.map(s => s.number)) + 1 
+      : 1;
+
+    // 1. Update existing student as 'Remanejado' in old class
     const updatedStudents = db.students.map(s => {
       if (s.id === selectedStudentId) {
         return {
           ...s,
-          classId: targetClassId,
-          observations: (s.observations || '') + `\nTransferido em ${new Date().toLocaleDateString('pt-BR')}`
+          status: 'Remanejado' as StudentStatus,
+          statusDate: dateStr,
+          observations: (s.observations || '') + `\nRemanejado para outra turma em ${dateStr}`
         };
       }
       return s;
     });
 
-    const newDb = { ...db, students: updatedStudents };
+    // 2. Create new student record for the new class
+    const newStudentEntry: Student = {
+      ...studentToMove,
+      id: `student_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      classId: targetClassId,
+      number: nextNumber,
+      status: 'Ativo',
+      statusDate: undefined,
+      transferredTo: undefined,
+      observations: `Vindo da turma ${db.classes.find(c => c.id === studentToMove.classId)?.name} em ${dateStr}`
+    };
+
+    const newDb = { 
+      ...db, 
+      students: [...updatedStudents, newStudentEntry] 
+    };
+
     saveDb(newDb);
     setDb(newDb);
     setSelectedStudentId('');
     setTargetClassId('');
-    alert('Transferência realizada com sucesso!');
+    alert('Relocação efetuada com sucesso! O registro do aluno foi preservado na turma anterior como REMANEJADO e um novo registro ativo foi criado na turma de destino.');
   };
 
   return (
@@ -1234,8 +1355,415 @@ const TransfersView = ({ db, setDb }: { db: AppData, setDb: (d: AppData) => void
   );
 }
 
+function SortableColumn({ 
+  col, 
+  isSelected, 
+  toggleColumn 
+}: { 
+  col: { id: string, label: string }, 
+  isSelected: boolean, 
+  toggleColumn: (id: string) => void,
+  key?: string
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: col.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : undefined,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="relative group"
+    >
+      <button
+        onClick={() => toggleColumn(col.id)}
+        className={cn(
+          "pl-3 pr-4 py-2 rounded-full border text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 select-none",
+          isSelected
+            ? "bg-emerald-600 text-white border-emerald-700 shadow-md"
+            : "bg-slate-50 text-slate-400 border-slate-100 hover:bg-slate-100"
+        )}
+      >
+        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing hover:text-white/80">
+          <GripVertical className="w-3 h-3" />
+        </div>
+        {isSelected ? <CheckCircle2 className="w-3 h-3" /> : <div className="w-3 h-3 border-2 border-slate-200 rounded-full" />}
+        {col.label}
+      </button>
+    </div>
+  );
+}
+
+function CustomReportView({ db }: { db: AppData }) {
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+  const [selectedColumns, setSelectedColumns] = useState<string[]>(['number', 'name']);
+  const [columnsOrder, setColumnsOrder] = useState([
+    { id: 'number', label: 'Nº' },
+    { id: 'name', label: 'Nome' },
+    { id: 'ra', label: 'RA' },
+    { id: 'birthDate', label: 'Nascimento' },
+    { id: 'motherName', label: 'Mãe' },
+    { id: 'phone', label: 'Telefone' },
+    { id: 'address', label: 'Endereço' },
+    { id: 'cpf', label: 'CPF' },
+    { id: 'rg', label: 'RG' },
+    { id: 'susCard', label: 'Cartão SUS' },
+    { id: 'className', label: 'Turma' },
+    { id: 'status', label: 'Situação' },
+  ]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setColumnsOrder((items) => {
+        const oldIndex = items.findIndex((i) => i.id === active.id);
+        const newIndex = items.findIndex((i) => i.id === over.id);
+
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
+
+  const toggleClass = (id: string) => {
+    setSelectedClassIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const selectAllClasses = () => {
+    if (selectedClassIds.length === db.classes.length) setSelectedClassIds([]);
+    else setSelectedClassIds(db.classes.map(c => c.id));
+  };
+
+  const toggleColumn = (id: string) => {
+    setSelectedColumns(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  // Re-order selected columns based on columnsOrder
+  const sortedSelectedColumns = useMemo(() => {
+    return columnsOrder
+      .filter(col => selectedColumns.includes(col.id))
+      .map(col => col.id);
+  }, [columnsOrder, selectedColumns]);
+
+  const exportToWord = async () => {
+    const doc = new Document({
+      sections: selectedClassIds.map(id => {
+        const cls = db.classes.find(c => c.id === id)!;
+        const students = db.students
+          .filter(s => s.classId === id && s.status !== 'Inativo')
+          .sort((a, b) => a.number - b.number);
+
+        return {
+          properties: {
+            page: {
+              size: {
+                orientation: PageOrientation.LANDSCAPE,
+              },
+            },
+          },
+          children: [
+            new Paragraph({
+              text: "EMEF PEDRO CAMINOTO",
+              heading: HeadingLevel.HEADING_1,
+              alignment: AlignmentType.CENTER,
+            }),
+            new Paragraph({
+              text: `RELAÇÃO DE ALUNOS - ${cls.name}`,
+              heading: HeadingLevel.HEADING_2,
+              alignment: AlignmentType.CENTER,
+            }),
+            new Paragraph({
+              text: `Data de Emissão: ${formatDisplayDate(new Date())}`,
+              alignment: AlignmentType.RIGHT,
+            }),
+            new Paragraph({ text: "" }), // Spacer
+            new Table({
+              width: {
+                size: 100,
+                type: WidthType.PERCENTAGE,
+              },
+              rows: [
+                new TableRow({
+                  children: sortedSelectedColumns.map(colId => (
+                    new TableCell({
+                      children: [new Paragraph({ 
+                        text: columnsOrder.find(c => c.id === colId)?.label || '',
+                        alignment: AlignmentType.CENTER,
+                      })],
+                      shading: {
+                        fill: "E2E8F0",
+                      },
+                      verticalAlign: VerticalAlign.CENTER,
+                    })
+                  )),
+                }),
+                ...students.map(s => new TableRow({
+                  children: sortedSelectedColumns.map(colId => {
+                    let value = (s as any)[colId];
+                    if (colId === 'birthDate') {
+                      value = formatDisplayDate(value);
+                    }
+                    if (colId === 'className') {
+                      value = db.classes.find(c => c.id === s.classId)?.name;
+                    }
+                    return new TableCell({
+                      children: [new Paragraph({ 
+                        text: String(value || '-'),
+                        alignment: AlignmentType.LEFT,
+                      })],
+                      verticalAlign: VerticalAlign.CENTER,
+                    });
+                  }),
+                })),
+              ],
+            }),
+            new Paragraph({ text: "" }), // Spacer
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: "EduGestão - Sistema de Gestão Escolar",
+                  size: 16,
+                  color: "94A3B8",
+                }),
+              ],
+            }),
+          ],
+        };
+      }),
+    });
+
+    const blob = await Packer.toBlob(doc);
+    saveAs(blob, "Relatorio_Customizado.docx");
+  };
+
+  const exportToExcel = () => {
+    const workbook = utils.book_new();
+
+    selectedClassIds.forEach(id => {
+      const cls = db.classes.find(c => c.id === id)!;
+      const students = db.students
+        .filter(s => s.classId === id && s.status !== 'Inativo')
+        .sort((a, b) => a.number - b.number);
+
+      const data = students.map(s => {
+        const row: any = {};
+        sortedSelectedColumns.forEach(colId => {
+          const colInfo = columnsOrder.find(c => c.id === colId);
+          const label = colInfo?.label || colId;
+          let value = (s as any)[colId];
+          
+          if (colId === 'birthDate') {
+            value = formatDisplayDate(value);
+          }
+          
+          if (colId === 'className') {
+            value = db.classes.find(c => c.id === s.classId)?.name;
+          }
+          
+          row[label] = value || '-';
+        });
+        return row;
+      });
+
+      const worksheet = utils.json_to_sheet(data);
+      // Sheet name cannot exceed 31 chars and cannot contain certain chars
+      const sheetName = cls.name.replace(/[*?:\\/\[\]]/g, '').substring(0, 31);
+      utils.book_append_sheet(workbook, worksheet, sheetName || `Turma_${id.substring(0,4)}`);
+    });
+
+    writeFile(workbook, "Relatorio_Customizado.xlsx");
+  };
+
+  return (
+    <div className="space-y-6 pb-20">
+      <header className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 no-print space-y-8">
+        <div>
+          <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase italic flex items-center gap-3">
+            <FileText className="w-8 h-8 text-indigo-600" />
+            Configuração de Relatório Customizado
+          </h2>
+          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Selecione as turmas, escolha as colunas e arraste-as para reordenar</p>
+        </div>
+
+        <div className="space-y-4">
+           <div className="flex justify-between items-center">
+              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">1. Selecione as Turmas ({selectedClassIds.length})</h3>
+              <button onClick={selectAllClasses} className="text-[10px] font-black text-indigo-600 uppercase hover:underline">
+                {selectedClassIds.length === db.classes.length ? 'Desmarcar Todas' : 'Selecionar Todas'}
+              </button>
+           </div>
+           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {db.classes.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => toggleClass(c.id)}
+                  className={cn(
+                    "p-3 rounded-2xl border text-[10px] font-black uppercase tracking-tighter transition-all",
+                    selectedClassIds.includes(c.id) 
+                      ? "bg-indigo-600 text-white border-indigo-700 shadow-md scale-[1.02]" 
+                      : "bg-white text-slate-500 border-slate-100 hover:border-indigo-200"
+                  )}
+                >
+                  {c.name}
+                </button>
+              ))}
+           </div>
+        </div>
+
+        <div className="space-y-4">
+           <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">2. Colunas (Arraste para reordenar)</h3>
+           <DndContext 
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+           >
+              <SortableContext 
+                items={columnsOrder.map(c => c.id)}
+                strategy={horizontalListSortingStrategy}
+              >
+                <div className="flex flex-wrap gap-2">
+                  {columnsOrder.map(col => (
+                    <SortableColumn 
+                      key={col.id}
+                      col={col}
+                      isSelected={selectedColumns.includes(col.id)}
+                      toggleColumn={toggleColumn}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+           </DndContext>
+        </div>
+
+        <div className="flex justify-center gap-4 pt-4 border-t border-slate-100">
+          <button 
+            onClick={exportToWord}
+            disabled={selectedClassIds.length === 0 || selectedColumns.length === 0}
+            className="px-6 py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-indigo-700 shadow-xl transition-all flex items-center gap-3 transform active:scale-95 disabled:bg-slate-200 disabled:shadow-none"
+          >
+            <Download className="w-5 h-5" />
+            Word (Paisagem)
+          </button>
+          <button 
+            onClick={exportToExcel}
+            disabled={selectedClassIds.length === 0 || selectedColumns.length === 0}
+            className="px-6 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-emerald-700 shadow-xl transition-all flex items-center gap-3 transform active:scale-95 disabled:bg-slate-200 disabled:shadow-none"
+          >
+            <Database className="w-5 h-5" />
+            Exportar para Excel
+          </button>
+        </div>
+      </header>
+
+      {/* Printable Area for Custom Report */}
+      <div className="custom-report-print-container">
+        {selectedClassIds.map(id => {
+          const cls = db.classes.find(c => c.id === id)!;
+          const students = db.students
+            .filter(s => s.classId === id && s.status !== 'Inativo')
+            .sort((a, b) => a.number - b.number);
+
+          return (
+            <div key={id} className="attendance-page bg-white p-10 shadow-xl mb-10 print:m-0 print:shadow-none print:p-8 print:page-break-after-always overflow-hidden">
+               <div className="flex justify-between items-center border-b-4 border-slate-900 pb-4 mb-6">
+                  <div className="flex items-center gap-6">
+                    <div className="w-16 h-16 bg-slate-100 flex items-center justify-center border-2 border-slate-900 rounded-2xl">
+                      <School className="w-10 h-10 text-slate-900" />
+                    </div>
+                    <div>
+                      <h1 className="text-[18px] font-black uppercase leading-tight">EMEF PEDRO CAMINOTO</h1>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-600">RELAÇÃO DE ALUNOS - {cls.name}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <h2 className="text-[10px] font-black uppercase tracking-widest text-slate-400">DATA DE EMISSÃO</h2>
+                    <p className="text-[14px] font-black uppercase">{formatDisplayDate(new Date())}</p>
+                  </div>
+               </div>
+
+               <div className="w-full">
+                <table className="w-full border-collapse border-2 border-slate-900">
+                  <thead>
+                    <tr className="bg-slate-100">
+                      {sortedSelectedColumns.map(colId => (
+                        <th key={colId} className="border-2 border-slate-900 p-2 text-[10px] font-black uppercase tracking-tighter text-left">
+                          {columnsOrder.find(c => c.id === colId)?.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {students.map((s, idx) => (
+                      <tr key={s.id} className={cn("h-8", idx % 2 === 0 ? "bg-white" : "bg-slate-50/50")}>
+                        {sortedSelectedColumns.map(colId => {
+                          let value = (s as any)[colId];
+                          
+                          if (colId === 'birthDate') {
+                            value = formatDisplayDate(value);
+                          }
+
+                          if (colId === 'className') {
+                            value = db.classes.find(c => c.id === s.classId)?.name;
+                          }
+
+                          return (
+                            <td key={colId} className="border border-slate-900 px-3 py-1 text-[10px] font-bold uppercase truncate whitespace-nowrap">
+                              {value || '-'}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+               </div>
+
+               <div className="mt-8 flex justify-between items-end border-t-2 border-slate-100 pt-6">
+                  <div>
+                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest leading-none">EduGestão - Sistema de Gestão Escolar</p>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="w-64 h-px bg-slate-900" />
+                    <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest leading-none text-center">Responsável</p>
+                  </div>
+               </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ReportsView({ db }: { db: AppData }) {
-  const [reportType, setReportType] = useState<'vacancies' | 'attendance' | null>(null);
+  const [reportType, setReportType] = useState<'vacancies' | 'attendance' | 'custom' | null>(null);
   const [oficioNumber, setOficioNumber] = useState('');
 
   const vacancyData = useMemo(() => {
@@ -1292,12 +1820,29 @@ function ReportsView({ db }: { db: AppData }) {
           </div>
           <div className="text-center">
             <h3 className="font-black text-slate-800 uppercase tracking-tight text-lg">Diário / Chamada</h3>
-            <p className="text-slate-400 text-xs font-bold mt-1 uppercase tracking-widest">Gerar listas de frequência por turma</p>
+            <p className="text-slate-400 text-xs font-bold mt-1 uppercase tracking-widest">Lista de frequência por turma</p>
+          </div>
+        </button>
+
+        <button 
+          onClick={() => setReportType('custom')}
+          className={cn(
+            "p-8 bg-white rounded-[2.5rem] border transition-all group flex flex-col items-center gap-4",
+            reportType === 'custom' ? "border-indigo-600 shadow-xl" : "border-slate-200 shadow-sm hover:shadow-lg"
+          )}
+        >
+          <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
+            <FileText className="w-8 h-8" />
+          </div>
+          <div className="text-center">
+            <h3 className="font-black text-slate-800 uppercase tracking-tight text-lg">Relatório Customizado</h3>
+            <p className="text-slate-400 text-xs font-bold mt-1 uppercase tracking-widest">Extrair dados específicos dos alunos</p>
           </div>
         </button>
       </div>
 
       {reportType === 'attendance' && <AttendanceView db={db} />}
+      {reportType === 'custom' && <CustomReportView db={db} />}
 
       {reportType === 'vacancies' && (
         <div className="space-y-6">
@@ -1516,7 +2061,7 @@ function RegistryView({ db, setDb }: { db: AppData, setDb: (d: AppData) => void 
                     </span>
                   </td>
                   <td className="px-6 py-4 font-black uppercase text-slate-700">{r.studentName}</td>
-                  <td className="px-6 py-4 text-right text-xs font-bold text-slate-400">{r.birthDate}</td>
+                  <td className="px-6 py-4 text-right text-xs font-bold text-slate-400">{formatDisplayDate(r.birthDate)}</td>
                 </tr>
               ))}
             </tbody>
@@ -1596,7 +2141,7 @@ function NewStudentModal({ db, onClose, onSave }: { db: AppData, onClose: () => 
         type: type,
         studentName: formData.name,
         ra: formData.ra || undefined,
-        birthDate: formData.birthDate || new Date().toLocaleDateString('pt-BR')
+        birthDate: formData.birthDate ? formatDisplayDate(formData.birthDate) : formatDisplayDate(new Date())
       });
     }
 
@@ -1702,6 +2247,9 @@ function EditStudentModal({ db, student, onClose, onSave }: { db: AppData, stude
     observations: student.observations || '',
     classId: student.classId || '',
     number: student.number?.toString() || '',
+    status: student.status || 'Ativo',
+    statusDate: student.statusDate || '',
+    transferredTo: student.transferredTo || '',
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1727,6 +2275,9 @@ function EditStudentModal({ db, student, onClose, onSave }: { db: AppData, stude
         observations: formData.observations,
         classId: formData.classId,
         number: parseInt(formData.number) || 0,
+        status: formData.status as StudentStatus,
+        statusDate: formData.statusDate,
+        transferredTo: formData.transferredTo,
       };
       onSave(newDb);
     }
@@ -1885,6 +2436,49 @@ function StudentFormFieldset({ formData, setFormData, db, isEdit = false }: any)
         />
       </div>
 
+      {isEdit && (
+        <>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Status</label>
+            <select 
+              className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-2 focus:ring-indigo-300 font-bold text-slate-700"
+              value={formData.status}
+              onChange={e => setFormData({...formData, status: e.target.value as StudentStatus})}
+            >
+              <option value="Ativo">Ativo</option>
+              <option value="Inativo">Inativo</option>
+              <option value="Abandono">Abandono</option>
+              <option value="Transferido">Transferido</option>
+              <option value="Remanejado">Remanejado</option>
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Data Ocorrência ({formData.status})</label>
+            <input 
+              type="date"
+              className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-2 focus:ring-indigo-300 font-bold text-slate-700"
+              value={formData.statusDate}
+              onChange={e => setFormData({...formData, statusDate: e.target.value})}
+            />
+          </div>
+
+          {formData.status === 'Transferido' ? (
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Escola de Destino</label>
+              <input 
+                className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-2 focus:ring-indigo-300 font-bold text-slate-700"
+                placeholder="ESCOLA DESTINO"
+                value={formData.transferredTo}
+                onChange={e => setFormData({...formData, transferredTo: e.target.value.toUpperCase()})}
+              />
+            </div>
+          ) : (
+            <div className="hidden md:block" />
+          )}
+        </>
+      )}
+
       <div className="md:col-span-3 space-y-2">
         <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Endereço Completo</label>
         <input 
@@ -1907,7 +2501,7 @@ function StudentFormFieldset({ formData, setFormData, db, isEdit = false }: any)
 }
 
 function ManagementView({ db, setDb }: { db: AppData, setDb: (d: AppData) => void }) {
-  const [view, setView] = useState<'menu' | 'inactive' | 'edit-all' | 'clear-class' | 'password'>('menu');
+  const [view, setView] = useState<'menu' | 'inactive' | 'edit-all' | 'clear-class' | 'password' | 'backup'>('menu');
   const [searchTerm, setSearchTerm] = useState('');
   const [classFilter, setClassFilter] = useState<string>('all');
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
@@ -1995,6 +2589,65 @@ function ManagementView({ db, setDb }: { db: AppData, setDb: (d: AppData) => voi
     alert('Senha de gerenciamento atualizada com sucesso!');
   };
 
+  const handleClearAllData = () => {
+    if (passwordInput !== (db.adminPassword || 'rhidi2xd')) {
+      alert('Senha incorreta! Ação cancelada.');
+      return;
+    }
+
+    if (!confirm('🚨 AVISO DE SEGURANÇA MÁXIMA!\n\nVocê está prestes a apagar ABSOLUTAMENTE TODOS os dados: turmas, alunos e registros de RM.\n\nEsta ação NÃO pode ser desfeita. Tem certeza que deseja resetar o sistema completamente?')) return;
+
+    const emptyDb: AppData = {
+      classes: [],
+      students: [],
+      rmRegistry: [],
+      transferWaitlist: []
+    };
+    saveDb(emptyDb);
+    setDb(emptyDb);
+    setPasswordInput('');
+    setView('menu');
+    alert('O sistema foi completamente resetado.');
+  };
+
+  const exportBackup = () => {
+    const dataStr = JSON.stringify(db, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    const exportFileDefaultName = `backup_galunos_${formatDisplayDate(new Date()).replace(/\//g, '-')}.json`;
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+  };
+
+  const importBackup = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const importedDb = JSON.parse(content);
+        
+        if (importedDb.students && importedDb.classes) {
+          if (confirm('Deseja realmente restaurar este backup? Os dados atuais serão substituídos pelos dados do arquivo.')) {
+            setDb(importedDb);
+            saveDb(importedDb);
+            alert('Banco de dados restaurado com sucesso!');
+            setView('menu');
+          }
+        } else {
+          alert('Arquivo inválido! O formato do backup não é compatível.');
+        }
+      } catch (err) {
+        alert('Erro ao ler arquivo. Verifique se é um arquivo JSON válido.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
   if (view === 'menu') {
     return (
       <div className="space-y-8 animate-in fade-in zoom-in-95">
@@ -2037,6 +2690,13 @@ function ManagementView({ db, setDb }: { db: AppData, setDb: (d: AppData) => voi
             subtitle="Alterar acesso mestre"
             color="bg-amber-600"
           />
+          <ManagementMenuButton 
+            onClick={() => setView('backup')}
+            icon={Download}
+            title="Importar / Exportar Banco"
+            subtitle="Backup total do sistema"
+            color="bg-blue-600"
+          />
         </div>
       </div>
     );
@@ -2055,15 +2715,50 @@ function ManagementView({ db, setDb }: { db: AppData, setDb: (d: AppData) => voi
             <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter italic leading-none">
               {view === 'inactive' ? 'Alunos Inativos' : 
                view === 'edit-all' ? 'Editar Cadastros' :
-               view === 'clear-class' ? 'Excluir Turma' : 'Segurança do Sistema'}
+               view === 'clear-class' ? 'Excluir Turma' :
+               view === 'backup' ? 'Exportar / Importar Banco' : 'Segurança do Sistema'}
             </h2>
             <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1 italic">Área Administrativa</p>
          </div>
       </div>
 
-      {(view === 'inactive' || view === 'edit-all') && (
+      {(view === 'inactive' || view === 'edit-all' || view === 'backup') && (
         <div className="space-y-6">
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 items-center">
+          {view === 'backup' ? (
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto pt-10 px-4">
+                <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 flex flex-col items-center text-center space-y-6">
+                   <div className="p-6 bg-blue-50 text-blue-500 rounded-[2rem]">
+                      <Download className="w-12 h-12" />
+                   </div>
+                   <div>
+                      <h3 className="text-2xl font-black text-slate-800 uppercase italic">Exportar Banco</h3>
+                      <p className="text-slate-400 text-xs font-bold uppercase mt-2 tracking-widest">Salva um backup completo do sistema</p>
+                   </div>
+                   <button 
+                    onClick={exportBackup}
+                    className="w-full py-5 bg-blue-600 text-white rounded-3xl font-black uppercase text-sm tracking-widest shadow-2xl shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95"
+                   >
+                     Exportar Banco de Dados
+                   </button>
+                </div>
+
+                <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 flex flex-col items-center text-center space-y-6">
+                   <div className="p-6 bg-emerald-50 text-emerald-500 rounded-[2rem]">
+                      <Upload className="w-12 h-12" />
+                   </div>
+                   <div>
+                      <h3 className="text-2xl font-black text-slate-800 uppercase italic">Importar Banco</h3>
+                      <p className="text-slate-400 text-xs font-bold uppercase mt-2 tracking-widest">Restaura dados de um backup anterior</p>
+                   </div>
+                   <label className="w-full py-5 bg-emerald-600 text-white rounded-3xl font-black uppercase text-sm tracking-widest shadow-2xl shadow-emerald-100 hover:bg-emerald-700 transition-all active:scale-95 cursor-pointer flex items-center justify-center">
+                     Importar Banco de Dados
+                     <input type="file" accept=".json" onChange={importBackup} className="hidden" />
+                   </label>
+                </div>
+             </div>
+          ) : (
+            <>
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 items-center">
             <div className="p-4 bg-slate-100 rounded-2xl text-slate-400 hidden md:block">
               <Filter className="w-5 h-5" />
             </div>
@@ -2170,8 +2865,10 @@ function ManagementView({ db, setDb }: { db: AppData, setDb: (d: AppData) => voi
               )}
             </div>
           </div>
-        </div>
+        </>
       )}
+    </div>
+  )}
 
       {view === 'clear-class' && (
         <div className="bg-rose-50 p-12 rounded-[2.5rem] border-2 border-dashed border-rose-200 max-w-2xl mx-auto mt-10 shadow-2xl">
@@ -2217,6 +2914,16 @@ function ManagementView({ db, setDb }: { db: AppData, setDb: (d: AppData) => voi
               >
                 AUTORIZAR LIMPEZA DA TURMA
               </button>
+
+              <div className="pt-10 border-t-2 border-rose-100 border-dashed mt-10">
+                 <p className="text-[10px] font-black text-rose-400 uppercase text-center mb-6 tracking-widest italic">Opções Avançadas de Exclusão</p>
+                 <button 
+                   onClick={handleClearAllData}
+                   className="w-full py-4 border-2 border-rose-500 text-rose-600 rounded-3xl font-black uppercase text-xs tracking-widest hover:bg-rose-500 hover:text-white transition-all active:scale-95 flex items-center justify-center gap-3"
+                 >
+                   <Trash2 className="w-4 h-4" /> Deletar Sistema Completo
+                 </button>
+              </div>
            </div>
         </div>
       )}

@@ -38,6 +38,7 @@ export interface Student {
   classId: string;
   status: StudentStatus;
   statusDate?: string;
+  transferredTo?: string;
   observations?: string;
 }
 
